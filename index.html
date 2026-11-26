@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Focus Timer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#e9eef2; --card:#ffffff; --ink:#14213d; --muted:#5b6b82; --line:#d3dce6;
+  --accent:#ff5a36; --accent-ink:#ffffff; --break:#1f8a70;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1726; --card:#17233a; --ink:#eaf0f7; --muted:#9db0c8; --line:#2b3b57;
+    --accent:#ff7a59; --accent-ink:#14213d; --break:#4cc9a7;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1726; --card:#17233a; --ink:#eaf0f7; --muted:#9db0c8; --line:#2b3b57;
+  --accent:#ff7a59; --accent-ink:#14213d; --break:#4cc9a7;
+}
+*,*::before,*::after{box-sizing:inherit}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",sans-serif;
+  min-height:100vh; display:flex; justify-content:center; padding:24px 16px;
+}
+main{width:100%; max-width:440px}
+h1{font-size:1.5rem; font-weight:800; margin:0 0 4px}
+.sub{color:var(--muted); margin:0 0 20px}
+.card{background:var(--card); border:1px solid var(--line); border-radius:20px; padding:24px; margin-bottom:16px}
+.modes{display:flex; gap:8px; margin-bottom:20px}
+.modes button{
+  flex:1; padding:10px; border-radius:999px; border:1px solid var(--line);
+  background:transparent; color:var(--muted); font:inherit; font-weight:600; cursor:pointer;
+}
+.modes button[aria-pressed="true"]{background:var(--ink); color:var(--bg); border-color:var(--ink)}
+.dial{position:relative; width:240px; height:240px; margin:0 auto 20px}
+.dial svg{width:100%; height:100%; transform:rotate(-90deg)}
+.track{fill:none; stroke:var(--line); stroke-width:12}
+.bar{fill:none; stroke:var(--accent); stroke-width:12; stroke-linecap:round; transition:stroke-dashoffset .4s linear}
+body.on-break .bar{stroke:var(--break)}
+.time{
+  position:absolute; inset:0; display:grid; place-items:center;
+  font-size:3.4rem; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:-.02em;
+}
+.controls{display:flex; gap:10px}
+.controls button{
+  flex:1; padding:14px; border-radius:14px; font:inherit; font-weight:600; font-size:1rem; cursor:pointer;
+  border:1px solid var(--line); background:transparent; color:var(--ink);
+}
+.controls .primary{background:var(--accent); color:var(--accent-ink); border-color:var(--accent); flex:2}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent); outline-offset:2px}
+.count{text-align:center; color:var(--muted); margin:16px 0 0}
+.count strong{color:var(--ink)}
+form{display:flex; gap:8px; margin-bottom:12px}
+input[type="text"]{
+  flex:1; padding:12px 14px; border-radius:12px; border:1px solid var(--line);
+  background:transparent; color:var(--ink); font:inherit; min-width:0;
+}
+form button{padding:0 18px; border-radius:12px; border:0; background:var(--ink); color:var(--bg); font:inherit; font-weight:600; cursor:pointer}
+ul{list-style:none; margin:0; padding:0}
+li{display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line)}
+li:last-child{border-bottom:0}
+li label{flex:1; cursor:pointer}
+li.done label{text-decoration:line-through; color:var(--muted)}
+li input{width:18px; height:18px; accent-color:var(--accent)}
+li .del{background:none; border:0; color:var(--muted); font-size:1.2rem; cursor:pointer}
+.empty{color:var(--muted); margin:0}
+@media (prefers-reduced-motion:reduce){.bar{transition:none}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Focus Timer</h1>
+  <p class="sub">Work in short rounds. Take real breaks.</p>
+
+  <section class="card" aria-label="Timer">
+    <div class="modes">
+      <button type="button" data-mode="focus" aria-pressed="true">Focus 25</button>
+      <button type="button" data-mode="break" aria-pressed="false">Break 5</button>
+    </div>
+    <div class="dial">
+      <svg viewBox="0 0 120 120" aria-hidden="true">
+        <circle class="track" cx="60" cy="60" r="52"/>
+        <circle class="bar" id="bar" cx="60" cy="60" r="52"/>
+      </svg>
+      <div class="time" id="time" role="timer" aria-live="off">25:00</div>
+    </div>
+    <div class="controls">
+      <button type="button" id="reset">Reset</button>
+      <button type="button" id="start" class="primary">Start</button>
+    </div>
+    <p class="count">Rounds finished today: <strong id="rounds">0</strong></p>
+  </section>
+
+  <section class="card" aria-label="Tasks">
+    <form id="form">
+      <input type="text" id="task" placeholder="What are you working on?" aria-label="New task" maxlength="80" autocomplete="off">
+      <button type="submit">Add task</button>
+    </form>
+    <ul id="list"></ul>
+    <p class="empty" id="empty">No tasks yet. Add the first one above.</p>
+  </section>
+</main>
+
+<script>
+(function(){
+  var LENGTHS = {focus:25*60, break:5*60};
+  var CIRC = 2*Math.PI*52;
+  var mode = "focus", left = LENGTHS.focus, timer = null;
+  var $ = function(id){return document.getElementById(id)};
+  var bar=$("bar"), timeEl=$("time"), startBtn=$("start");
+  var tasks = [], rounds = 0;
+
+  bar.style.strokeDasharray = CIRC;
+
+  function load(){
+    try{
+      tasks = JSON.parse(localStorage.getItem("ft-tasks")||"[]");
+      var r = JSON.parse(localStorage.getItem("ft-rounds")||"{}");
+      if(r.day === new Date().toDateString()) rounds = r.n||0;
+    }catch(e){ tasks=[]; rounds=0; }
+  }
+  function save(){
+    try{
+      localStorage.setItem("ft-tasks", JSON.stringify(tasks));
+      localStorage.setItem("ft-rounds", JSON.stringify({day:new Date().toDateString(), n:rounds}));
+    }catch(e){}
+  }
+
+  function fmt(s){
+    var m = Math.floor(s/60), r = s%60;
+    return (m<10?"0":"")+m+":"+(r<10?"0":"")+r;
+  }
+  function draw(){
+    timeEl.textContent = fmt(left);
+    bar.style.strokeDashoffset = CIRC * (1 - left/LENGTHS[mode]);
+    document.title = (timer ? fmt(left)+" · " : "") + "Focus Timer";
+    $("rounds").textContent = rounds;
+  }
+  function stop(){
+    clearInterval(timer); timer = null; startBtn.textContent = "Start";
+  }
+  function setMode(m){
+    stop(); mode = m; left = LENGTHS[m];
+    document.body.classList.toggle("on-break", m==="break");
+    document.querySelectorAll("[data-mode]").forEach(function(b){
+      b.setAttribute("aria-pressed", String(b.dataset.mode===m));
+    });
+    draw();
+  }
+  function tick(){
+    left--;
+    if(left<=0){
+      var finished = mode;
+      if(finished==="focus"){ rounds++; save(); }
+      setMode(finished==="focus" ? "break" : "focus");
+      return;
+    }
+    draw();
+  }
+  startBtn.addEventListener("click", function(){
+    if(timer){ stop(); draw(); return; }
+    startBtn.textContent = "Pause";
+    timer = setInterval(tick, 1000);
+    draw();
+  });
+  $("reset").addEventListener("click", function(){ setMode(mode); });
+  document.querySelectorAll("[data-mode]").forEach(function(b){
+    b.addEventListener("click", function(){ setMode(b.dataset.mode); });
+  });
+
+  function renderTasks(){
+    var ul = $("list"); ul.innerHTML = "";
+    $("empty").hidden = tasks.length > 0;
+    tasks.forEach(function(t, i){
+      var li = document.createElement("li");
+      if(t.done) li.className = "done";
+      var cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = t.done; cb.id = "t"+i;
+      cb.addEventListener("change", function(){ t.done = cb.checked; save(); renderTasks(); });
+      var lb = document.createElement("label");
+      lb.htmlFor = cb.id; lb.textContent = t.text;
+      var del = document.createElement("button");
+      del.type = "button"; del.className = "del"; del.textContent = "×";
+      del.setAttribute("aria-label", "Delete task: "+t.text);
+      del.addEventListener("click", function(){ tasks.splice(i,1); save(); renderTasks(); });
+      li.append(cb, lb, del);
+      ul.appendChild(li);
+    });
+  }
+  $("form").addEventListener("submit", function(e){
+    e.preventDefault();
+    var v = $("task").value.trim();
+    if(!v) return;
+    tasks.push({text:v, done:false});
+    $("task").value = "";
+    save(); renderTasks();
+  });
+
+  load(); renderTasks(); draw();
+})();
+</script>
+</body>
+</html>
